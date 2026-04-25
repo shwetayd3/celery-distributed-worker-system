@@ -1,0 +1,20 @@
+# Core
+celery[redis]==5.3.6
+redis==5.0.1
+flower==2.0.1
+
+# API
+flask==3.0.0
+gunicorn==21.2.0
+
+# Utilities
+kombu==5.3.3
+
+# Testing
+pytest==7.4.4
+pytest-celery==0.0.0
+pytest-mock==3.12.0
+
+# Dev / linting (optional)
+black==24.3.0
+flake8==7.0.0
