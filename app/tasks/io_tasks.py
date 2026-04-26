@@ -1,3 +1,8 @@
+"""
+io_tasks.py
+I/O-bound tasks routed to the io_tasks queue.
+These simulate disk reads, network calls, and batch file operations.
+"""
 import time
 import random
 import logging
@@ -7,7 +12,6 @@ from app.celery_app import celery
 from app.utils.helpers import format_bytes, retry_with_backoff
 
 logger = logging.getLogger(__name__)
-
 
 @celery.task(
     bind=True,
