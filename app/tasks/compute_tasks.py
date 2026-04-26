@@ -1,3 +1,9 @@
+"""
+compute_tasks.py
+CPU-intensive tasks routed to the high_priority queue.
+All tasks use bind=True for self-referencing retry calls.
+"""
+
 import time
 import random
 import logging
