@@ -5,7 +5,6 @@ All values can be overridden with environment variables.
 """
 import os
 
-
 class Config:
     # ── Redis ────────────────────────────────────────────────────────────────
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -21,19 +20,15 @@ class Config:
     # ── Worker ───────────────────────────────────────────────────────────────
     WORKER_CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", 4))
 
-
 class DevelopmentConfig(Config):
     DEBUG = True
-
 
 class ProductionConfig(Config):
     DEBUG = False
 
-
 class TestingConfig(Config):
     TESTING = True
     REDIS_URL = "memory://"   # In-memory broker for unit tests
-
 
 config_map = {
     "development": DevelopmentConfig,
