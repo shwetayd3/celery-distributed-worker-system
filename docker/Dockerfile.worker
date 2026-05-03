@@ -1,1 +1,30 @@
+FROM python:3.11-slim
 
+LABEL maintainer="your-email@example.com"
+LABEL description="Celery worker for distributed task processing"
+
+# Avoid interactive prompts during package install
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project source
+COPY . .
+
+# Default queue and concurrency (override via docker-compose or env)
+ENV QUEUE=default
+ENV WORKER_CONCURRENCY=4
+ENV LOG_LEVEL=INFO
+
+CMD ["bash", "scripts/start_worker.sh"]
