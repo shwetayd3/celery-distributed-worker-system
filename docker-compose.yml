@@ -56,4 +56,41 @@ services:
       - .:/app
     command: bash scripts/start_worker.sh default 4
 
-  
+  # ── Celery Worker — high_priority queue ─────────────────────────────────────
+  worker_high_priority:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: celery_worker_high_priority
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      QUEUE: high_priority
+      WORKER_CONCURRENCY: 2
+      LOG_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: bash scripts/start_worker.sh high_priority 2
+
+  # ── Celery Worker — io_tasks queue ──────────────────────────────────────────
+  worker_io:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: celery_worker_io
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      QUEUE: io_tasks
+      WORKER_CONCURRENCY: 8
+      LOG_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: bash scripts/start_worker.sh io_tasks 8
+
