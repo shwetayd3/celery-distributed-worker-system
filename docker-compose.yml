@@ -94,3 +94,27 @@ services:
       - .:/app
     command: bash scripts/start_worker.sh io_tasks 8
 
+  # ── Flower Dashboard ────────────────────────────────────────────────────────
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: celery_flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      FLOWER_PORT: 5555
+      FLOWER_BASIC_AUTH: "admin:secret"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - flower_data:/app/monitoring
+    command: bash scripts/start_flower.sh
+
+volumes:
+  redis_data:
+  flower_data:
