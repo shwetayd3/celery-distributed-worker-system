@@ -91,4 +91,127 @@ def system_health_check(self) -> dict:
     else:
         logger.info(f"[health_check] {worker_count} worker(s), {total_active_tasks} active task(s)")
 
-    
+    # ── 3. Queue depths via Redis ─────────────────────────────────────────────
+    queue_names = ["default", "high_priority", "io_tasks"]
+    queue_report = {}
+    for q in queue_names:
+        try:
+            depth = r.llen(q)
+            queue_report[q] = {"depth": depth}
+            if depth > 500:
+                report["warnings"].append(f"Queue '{q}' depth is high: {depth}")
+                if report["status"] == "OK":
+                    report["status"] = "DEGRADED"
+        except Exception as exc:
+            queue_report[q] = {"depth": -1, "error": str(exc)}
+
+    report["queues"] = queue_report
+
+    # ── 4. Final status log ───────────────────────────────────────────────────
+    log_fn = logger.warning if report["status"] != "OK" else logger.info
+    log_fn(
+        f"[health_check] status={report['status']} "
+        f"workers={worker_count} warnings={report['warnings']}"
+    )
+
+    return report
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 2 — Stale Result Cleanup  (every hour)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@celery.task(
+    bind=True,
+    name="periodic.stale_result_cleanup",
+    max_retries=2,
+    default_retry_delay=30,
+    queue="default",
+    soft_time_limit=120,
+    time_limit=180,
+    ignore_result=False,
+)
+def stale_result_cleanup(self) -> dict:
+    """
+    Runs every hour via Celery Beat.
+
+    Celery stores task results in Redis under keys like:
+        celery-task-meta-<task_uuid>
+
+    Although result_expires=3600 is set, Redis only evicts keys lazily
+    (on access or when maxmemory-policy kicks in). This task proactively
+    scans for and deletes result keys older than RESULT_TTL_SECONDS to
+    keep Redis memory bounded.
+
+    Also cleans up any beat-related schedule keys that accumulate over time.
+
+    Returns a cleanup report with counts of scanned/deleted keys.
+    """
+    RESULT_TTL_SECONDS = int(Config.RESULT_TTL_SECONDS)
+    BATCH_SIZE = 500    # keys per SCAN iteration (avoids blocking Redis)
+
+    report = {
+        "task_id": self.request.id,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "scanned": 0,
+        "deleted": 0,
+        "errors": 0,
+        "elapsed_seconds": 0.0,
+    }
+
+    start = time.perf_counter()
+
+    try:
+        r = redis_lib.from_url(Config.REDIS_URL, socket_connect_timeout=5)
+
+        # SCAN is non-blocking and cursor-based — safe on production Redis
+        cursor = 0
+        deleted = 0
+        scanned = 0
+        errors = 0
+
+        while True:
+            cursor, keys = r.scan(
+                cursor=cursor,
+                match="celery-task-meta-*",
+                count=BATCH_SIZE,
+            )
+            scanned += len(keys)
+
+            for key in keys:
+                try:
+                    ttl = r.ttl(key)
+                    # ttl == -1 means the key has no expiry set at all — delete it
+                    # ttl == -2 means already gone (race condition) — skip
+                    if ttl == -1:
+                        r.delete(key)
+                        deleted += 1
+                        logger.debug(f"[cleanup] Deleted key with no TTL: {key}")
+                    elif ttl == -2:
+                        pass   # already expired, nothing to do
+                    # Keys with a positive TTL were set correctly — leave them alone
+                except Exception as exc:
+                    errors += 1
+                    logger.warning(f"[cleanup] Error processing key {key}: {exc}")
+
+            if cursor == 0:
+                break   # SCAN completed full iteration
+
+        report["scanned"] = scanned
+        report["deleted"] = deleted
+        report["errors"] = errors
+
+        logger.info(
+            f"[cleanup] Done — scanned={scanned} deleted={deleted} errors={errors} "
+            f"in {round(time.perf_counter() - start, 2)}s"
+        )
+
+    except Exception as exc:
+        logger.error(f"[cleanup] Fatal error during cleanup: {exc}")
+        raise self.retry(exc=exc)
+
+    finally:
+        report["elapsed_seconds"] = round(time.perf_counter() - start, 3)
+        report["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+    return report
