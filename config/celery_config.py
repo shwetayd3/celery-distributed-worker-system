@@ -63,14 +63,36 @@ task_max_retries = 3
 task_default_retry_delay = 5   # seconds
 
 # ── Beat Scheduler (periodic tasks) ─────────────────────────────────────────
-# Uncomment and add tasks here to use celery beat for cron-style scheduling.
-# beat_schedule = {
-#     "health-check-every-minute": {
-#         "task": "sample.add",
-#         "schedule": 60.0,
-#         "args": (1, 1),
-#     },
-# }
+# Celery Beat reads this schedule and enqueues tasks at the configured interval.
+# Run Beat with: bash scripts/start_beat.sh
+# Beat requires exactly ONE running instance — never scale it horizontally.
+from celery.schedules import crontab
+
+beat_schedule = {
+    # ── Task 1: System health check — every 60 seconds ─────────────────────
+    # Pings Redis, inspects active workers, measures queue depths.
+    # Results are stored in Redis so /health can surface them without extra load.
+    "system-health-check-every-60s": {
+        "task": "periodic.system_health_check",
+        "schedule": 60.0,                    # float = seconds interval
+        "options": {"queue": "default"},
+    },
+
+    # ── Task 2: Stale result cleanup — every hour at :00 ───────────────────
+    # Scans Redis for Celery result keys with no TTL and deletes them.
+    # Keeps Redis memory bounded without relying on maxmemory-policy alone.
+    "stale-result-cleanup-hourly": {
+        "task": "periodic.stale_result_cleanup",
+        "schedule": crontab(minute=0),       # crontab = "at the top of every hour"
+        "options": {"queue": "default"},
+    },
+}
+
+# Where Beat stores the schedule database (tracks last-run times).
+# Use a mounted volume in Docker so it survives container restarts.
+beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"  # swap to DB scheduler if needed
+beat_schedule_filename = "/var/run/celery/celerybeat-schedule"
+beat_max_loop_interval = 5   # seconds between Beat's internal loop ticks
 
 # ── Worker Settings ──────────────────────────────────────────────────────────
 worker_max_tasks_per_child = 200   # Recycle workers after 200 tasks (prevent memory leaks)
