@@ -13,6 +13,9 @@ class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
+    # ── Result cleanup ───────────────────────────────────────────────────────
+    RESULT_TTL_SECONDS = int(os.getenv("RESULT_TTL_SECONDS", 3600))
+
     # ── Flower ───────────────────────────────────────────────────────────────
     FLOWER_PORT = int(os.getenv("FLOWER_PORT", 5555))
     FLOWER_BASIC_AUTH = os.getenv("FLOWER_BASIC_AUTH", "admin:secret")
@@ -20,15 +23,19 @@ class Config:
     # ── Worker ───────────────────────────────────────────────────────────────
     WORKER_CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", 4))
 
+
 class DevelopmentConfig(Config):
     DEBUG = True
+
 
 class ProductionConfig(Config):
     DEBUG = False
 
+
 class TestingConfig(Config):
     TESTING = True
     REDIS_URL = "memory://"   # In-memory broker for unit tests
+
 
 config_map = {
     "development": DevelopmentConfig,
