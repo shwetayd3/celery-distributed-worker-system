@@ -1,13 +1,14 @@
 """
-celery_config.py
 All Celery configuration in one place.
 Imported via celery.config_from_object().
 """
 from kombu import Queue, Exchange
+from celery.schedules import crontab
 
 # ── Broker & Backend ─────────────────────────────────────────────────────────
 # Set via environment; falls back to localhost defaults.
 # Override using REDIS_URL env var in production.
+
 broker_url = "redis://localhost:6379/0"
 result_backend = "redis://localhost:6379/0"
 
