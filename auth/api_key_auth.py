@@ -25,3 +25,32 @@ Usage in api.py:
 Generating a key:
     python scripts/generate_api_key.py --name "ci-pipeline" --role admin
 """
+
+import hashlib
+import logging
+import time
+from datetime import datetime, timezone
+from functools import wraps
+from typing import Optional
+ 
+import redis as redis_lib
+from flask import request, jsonify, g
+ 
+from config.app_config import Config
+ 
+logger = logging.getLogger(__name__)
+ 
+# ── Key registry ──────────────────────────────────────────────────────────────
+# Maps SHA-256(raw_key) → key metadata.
+# Populate this from environment variables or a secrets manager in production.
+# Generate hashes with: python scripts/generate_api_key.py
+#
+# Schema per entry:
+#   name          human-readable label for logging/auditing
+#   role          "admin" | "readonly"
+#   rate_limit    max requests per minute (None = unlimited)
+#   expires_at    ISO-8601 UTC string or None
+#   enabled       set to False to instantly revoke without deleting the key
+#
+_KEY_REGISTRY: dict[str, dict] = {}
+ 
