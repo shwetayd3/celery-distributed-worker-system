@@ -94,6 +94,39 @@ services:
       - .:/app
     command: bash scripts/start_worker.sh io_tasks 8
 
+ 
+  # ── Celery Beat Scheduler ────────────────────────────────────────────────────
+  # Reads beat_schedule from celery_config.py and enqueues tasks into Redis.
+  
+  # NEVER scale this service beyond 1 replica.
+  # Multiple Beat instances will double-enqueue every periodic task.
+  # The deploy.replicas=1 + restart_policy below enforces this in Swarm.
+  # For plain Compose use: docker compose up (not --scale beat=N).
+  beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: celery_beat
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+      BEAT_SCHEDULE_FILE: /var/run/celery/celerybeat-schedule
+      BEAT_PIDFILE: /var/run/celery/celerybeat.pid
+      RESULT_TTL_SECONDS: "3600"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - beat_data:/var/run/celery   # persists schedule DB across restarts
+    command: bash scripts/start_beat.sh
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+  
   # ── Flower Dashboard ────────────────────────────────────────────────────────
   flower:
     build:
@@ -117,4 +150,5 @@ services:
 
 volumes:
   redis_data:
+  beat_data:      # Beat schedule database — survives container restarts
   flower_data:
