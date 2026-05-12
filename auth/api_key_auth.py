@@ -96,4 +96,93 @@ def reload_keys():
     global _KEY_REGISTRY
     _KEY_REGISTRY = _load_keys_from_config()
     logger.info("[auth] Key registry reloaded")
+
+# ── Rate limiting (Redis sliding window) ─────────────────────────────────────
  
+def _check_rate_limit(key_name: str, rate_limit: Optional[int]) -> tuple[bool, dict]:
+    """
+    Sliding-window rate limiter using Redis INCR + EXPIRE.
+ 
+    Args:
+        key_name:   Human-readable key name (used as Redis key suffix).
+        rate_limit: Max allowed requests per 60-second window. None = skip.
+ 
+    Returns:
+        (allowed: bool, headers: dict)  — headers go into the HTTP response.
+    """
+    if rate_limit is None:
+        return True, {}
+ 
+    try:
+        r = redis_lib.from_url(Config.REDIS_URL, socket_connect_timeout=1)
+        window = int(time.time()) // 60          # 1-minute bucket
+        redis_key = f"ratelimit:{key_name}:{window}"
+ 
+        current = r.incr(redis_key)
+        if current == 1:
+            r.expire(redis_key, 120)             # 2-minute TTL (covers current + previous window)
+ 
+        remaining = max(0, rate_limit - current)
+        reset_at = (window + 1) * 60            # epoch seconds when window resets
+ 
+        headers = {
+            "X-RateLimit-Limit": str(rate_limit),
+            "X-RateLimit-Remaining": str(remaining),
+            "X-RateLimit-Reset": str(reset_at),
+        }
+ 
+        if current > rate_limit:
+            logger.warning(f"[auth] Rate limit exceeded for key '{key_name}' ({current}/{rate_limit})")
+            return False, headers
+ 
+        return True, headers
+ 
+    except Exception as exc:
+        # If Redis is unreachable, fail open (don't block legitimate traffic)
+        logger.error(f"[auth] Rate limit check failed (failing open): {exc}")
+        return True, {}
+ 
+ 
+# ── Core validation ───────────────────────────────────────────────────────────
+ 
+def _validate_request() -> tuple[Optional[dict], Optional[tuple]]:
+    """
+    Validate the incoming request's API key.
+ 
+    Returns:
+        (key_meta, None)        on success — key_meta is the registry entry
+        (None, error_response)  on failure — error_response is a Flask response tuple
+    """
+    raw_key = request.headers.get("X-API-Key", "").strip()
+ 
+    if not raw_key:
+        logger.warning(f"[auth] Missing X-API-Key header — {request.method} {request.path}")
+        return None, (
+            jsonify({"error": "Missing API key", "hint": "Set the X-API-Key header"}),
+            401,
+        )
+ 
+    key_hash = _hash_key(raw_key)
+    registry = _get_registry()
+    key_meta = registry.get(key_hash)
+ 
+    if key_meta is None:
+        logger.warning(f"[auth] Invalid API key — {request.method} {request.path} from {_client_ip()}")
+        return None, (jsonify({"error": "Invalid API key"}), 403)
+ 
+    if not key_meta.get("enabled", True):
+        logger.warning(f"[auth] Disabled key '{key_meta['name']}' used — {request.path}")
+        return None, (jsonify({"error": "API key has been revoked"}), 403)
+ 
+    # Check expiry
+    expires_at = key_meta.get("expires_at")
+    if expires_at:
+        try:
+            expiry = datetime.fromisoformat(expires_at)
+            if datetime.now(timezone.utc) > expiry:
+                logger.warning(f"[auth] Expired key '{key_meta['name']}' used")
+                return None, (jsonify({"error": "API key has expired"}), 403)
+        except ValueError:
+            logger.error(f"[auth] Invalid expires_at format for key '{key_meta['name']}'")
+ 
+    return key_meta, None
