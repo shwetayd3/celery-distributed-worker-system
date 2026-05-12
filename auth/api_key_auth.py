@@ -53,4 +53,47 @@ logger = logging.getLogger(__name__)
 #   enabled       set to False to instantly revoke without deleting the key
 #
 _KEY_REGISTRY: dict[str, dict] = {}
+
+def _load_keys_from_config() -> dict[str, dict]:
+    """
+    Build the key registry from Config.API_KEYS.
+    Config.API_KEYS is a list of dicts loaded from the API_KEYS env var (JSON).
+    This function is called once at startup.
+    """
+    registry = {}
+    for entry in Config.API_KEYS:
+        raw_key = entry.get("key", "")
+        if not raw_key:
+            logger.warning("[auth] Skipping key entry with no 'key' field")
+            continue
+        key_hash = _hash_key(raw_key)
+        registry[key_hash] = {
+            "name": entry.get("name", "unnamed"),
+            "role": entry.get("role", "readonly"),
+            "rate_limit": entry.get("rate_limit", None),   # req/min, None = unlimited
+            "expires_at": entry.get("expires_at", None),   # ISO string or None
+            "enabled": entry.get("enabled", True),
+        }
+    logger.info(f"[auth] Loaded {len(registry)} API key(s)")
+    return registry
+ 
+ 
+def _hash_key(raw_key: str) -> str:
+    """SHA-256 hash of the raw API key. Keys are never stored in plaintext."""
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+ 
+ 
+def _get_registry() -> dict[str, dict]:
+    """Return the live registry, loading it on first call."""
+    global _KEY_REGISTRY
+    if not _KEY_REGISTRY:
+        _KEY_REGISTRY = _load_keys_from_config()
+    return _KEY_REGISTRY
+ 
+ 
+def reload_keys():
+    """Force-reload the key registry (call after a config change)."""
+    global _KEY_REGISTRY
+    _KEY_REGISTRY = _load_keys_from_config()
+    logger.info("[auth] Key registry reloaded")
  
