@@ -186,3 +186,55 @@ def _validate_request() -> tuple[Optional[dict], Optional[tuple]]:
             logger.error(f"[auth] Invalid expires_at format for key '{key_meta['name']}'")
  
     return key_meta, None
+
+# ── Decorators ────────────────────────────────────────────────────────────────
+ 
+def require_api_key(f):
+    """
+    Decorator: any valid, enabled, non-expired API key passes.
+    Applies rate limiting if the key has a rate_limit set.
+    Stores key metadata in Flask's g object for use in the view.
+ 
+    Example:
+        @app.route("/tasks/sample/add", methods=["POST"])
+        @require_api_key
+        def submit_add(): ...
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        key_meta, error = _validate_request()
+        if error:
+            return error
+ 
+        # Rate limiting
+        allowed, rl_headers = _check_rate_limit(key_meta["name"], key_meta.get("rate_limit"))
+        if not allowed:
+            resp = jsonify({
+                "error": "Rate limit exceeded",
+                "retry_after": rl_headers.get("X-RateLimit-Reset"),
+            })
+            resp.status_code = 429
+            for k, v in rl_headers.items():
+                resp.headers[k] = v
+            return resp
+ 
+        # Expose key info to the view via Flask's g
+        g.api_key_name = key_meta["name"]
+        g.api_key_role = key_meta["role"]
+ 
+        logger.info(
+            f"[auth] Authorized key='{key_meta['name']}' role={key_meta['role']} "
+            f"— {request.method} {request.path}"
+        )
+ 
+        response = f(*args, **kwargs)
+ 
+        # Attach rate-limit headers to the response
+        if rl_headers:
+            if hasattr(response, "headers"):
+                for k, v in rl_headers.items():
+                    response.headers[k] = v
+ 
+        return response
+ 
+    return decorated
