@@ -237,4 +237,20 @@ def require_api_key(f):
  
         return response
  
-    return decorated
+    return decorated 
+
+def require_admin(f):
+    """
+    Decorator: only admin-role keys pass. Implies require_api_key.
+ 
+    Example:
+        @app.route("/workers", methods=["GET"])
+        @require_admin
+        def list_workers(): ...
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        key_meta, error = _validate_request()
+        if error:
+            return error
+  
