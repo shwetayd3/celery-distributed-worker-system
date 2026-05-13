@@ -253,4 +253,33 @@ def require_admin(f):
         key_meta, error = _validate_request()
         if error:
             return error
+         
+        if key_meta.get("role") != "admin":
+            logger.warning(
+                f"[auth] Forbidden — key='{key_meta['name']}' role={key_meta['role']} "
+                f"tried admin endpoint {request.path}"
+            )
+            return jsonify({
+                "error": "Forbidden",
+                "detail": "This endpoint requires an admin API key",
+            }), 403
+ 
+        allowed, rl_headers = _check_rate_limit(key_meta["name"], key_meta.get("rate_limit"))
+        if not allowed:
+            resp = jsonify({"error": "Rate limit exceeded"})
+            resp.status_code = 429
+            for k, v in rl_headers.items():
+                resp.headers[k] = v
+            return resp
+ 
+        g.api_key_name = key_meta["name"]
+        g.api_key_role = key_meta["role"]
+ 
+        logger.info(
+            f"[auth] Admin authorized key='{key_meta['name']}' "
+            f"— {request.method} {request.path}"
+        )
+        return f(*args, **kwargs)
+ 
+    return decorated
   
