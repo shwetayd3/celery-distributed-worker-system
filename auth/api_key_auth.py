@@ -281,5 +281,13 @@ def require_admin(f):
         )
         return f(*args, **kwargs)
  
-    return decorated
-  
+    return decorated 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+ 
+def _client_ip() -> str:
+    """Best-effort client IP, respecting X-Forwarded-For from reverse proxies."""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
