@@ -23,12 +23,37 @@ from config.app_config import Config
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# ── Health ──────────────────────────────────────────────────────────────────
 
+ 
+# ── Health (public) ──────────────────────────────────────────────────────────
+ 
 @app.route("/health", methods=["GET"])
 def health():
+    """Public endpoint — no auth required. Used by load-balancers and uptime monitors."""
     return jsonify({"status": "ok", "broker": Config.REDIS_URL})
+ 
+ 
+# ── Key management (admin) ───────────────────────────────────────────────────
+ 
+@app.route("/auth/reload", methods=["POST"])
+@require_admin
+def reload_api_keys():
+    """
+    Force-reload the API key registry from Config.API_KEYS.
+    Call this after rotating keys without restarting the API.
+    """
+    reload_keys()
+    return jsonify({"status": "ok", "message": "API key registry reloaded"})
 
+@app.route("/auth/whoami", methods=["GET"])
+@require_api_key
+def whoami():
+    """Return the name and role of the currently authenticated key."""
+    return jsonify({
+        "key_name": g.get("api_key_name"),
+        "role": g.get("api_key_role"),
+    })
+ 
 
 # ── Task submission ──────────────────────────────────────────────────────────
 
