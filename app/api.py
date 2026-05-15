@@ -145,14 +145,12 @@ def submit_chain():
 
 
 # ── Task status & result ─────────────────────────────────────────────────────
-
+ 
 @app.route("/tasks/<task_id>/status", methods=["GET"])
+@require_api_key
 def get_task_status(task_id):
     result = AsyncResult(task_id, app=celery)
-    response = {
-        "task_id": task_id,
-        "status": result.status,
-    }
+    response = {"task_id": task_id, "status": result.status}
     if result.successful():
         response["result"] = result.result
     elif result.failed():
@@ -161,17 +159,19 @@ def get_task_status(task_id):
     elif result.status == "PROGRESS":
         response["meta"] = result.info
     return jsonify(response)
-
-
+ 
+ 
 @app.route("/tasks/<task_id>/revoke", methods=["DELETE"])
+@require_admin
 def revoke_task(task_id):
     celery.control.revoke(task_id, terminate=True)
     return jsonify({"task_id": task_id, "status": "REVOKED"})
-
-
-# ── Worker info ──────────────────────────────────────────────────────────────
-
+ 
+ 
+# ── Worker info (admin only) ─────────────────────────────────────────────────
+ 
 @app.route("/workers", methods=["GET"])
+@require_admin
 def list_workers():
     inspect = celery.control.inspect(timeout=2.0)
     active = inspect.active() or {}
@@ -185,9 +185,10 @@ def list_workers():
             "stats": stats.get(worker_name, {}),
         })
     return jsonify({"workers": workers, "total": len(workers)})
-
-
+ 
+ 
 @app.route("/queues", methods=["GET"])
+@require_admin
 def list_queues():
     inspect = celery.control.inspect(timeout=2.0)
     reserved = inspect.reserved() or {}
@@ -197,7 +198,7 @@ def list_queues():
             q = task.get("delivery_info", {}).get("routing_key", "unknown")
             queues[q] = queues.get(q, 0) + 1
     return jsonify({"queues": queues})
-
-
+ 
+ 
 if __name__ == "__main__":
     app.run(debug=Config.DEBUG, host="0.0.0.0", port=5000)
