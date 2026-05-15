@@ -24,7 +24,6 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 
- 
 # ── Health (public) ──────────────────────────────────────────────────────────
  
 @app.route("/health", methods=["GET"])
@@ -56,8 +55,9 @@ def whoami():
  
 
 # ── Task submission ──────────────────────────────────────────────────────────
-
+ 
 @app.route("/tasks/compute/sum-of-squares", methods=["POST"])
+@require_api_key
 def submit_sum_of_squares():
     data = request.get_json(force=True)
     n = data.get("n", 10000)
@@ -65,9 +65,10 @@ def submit_sum_of_squares():
         return jsonify({"error": "n must be a positive integer"}), 400
     task = sum_of_squares.apply_async(args=[n], queue="high_priority")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "high_priority"}), 202
-
-
+ 
+ 
 @app.route("/tasks/compute/fibonacci", methods=["POST"])
+@require_api_key
 def submit_fibonacci():
     data = request.get_json(force=True)
     n = data.get("n", 10)
@@ -75,33 +76,37 @@ def submit_fibonacci():
         return jsonify({"error": "n must be a non-negative integer"}), 400
     task = fibonacci.apply_async(args=[n], queue="high_priority")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "high_priority"}), 202
-
-
+ 
+ 
 @app.route("/tasks/compute/matrix-multiply", methods=["POST"])
+@require_api_key
 def submit_matrix_multiply():
     data = request.get_json(force=True)
     size = data.get("size", 100)
     task = matrix_multiply.apply_async(args=[size], queue="high_priority")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "high_priority"}), 202
-
-
+ 
+ 
 @app.route("/tasks/io/file-process", methods=["POST"])
+@require_api_key
 def submit_file_process():
     data = request.get_json(force=True)
     filename = data.get("filename", "sample.txt")
     task = simulate_file_processing.apply_async(args=[filename], queue="io_tasks")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "io_tasks"}), 202
-
-
+ 
+ 
 @app.route("/tasks/io/fetch-url", methods=["POST"])
+@require_api_key
 def submit_fetch_url():
     data = request.get_json(force=True)
     url = data.get("url", "https://example.com")
     task = fetch_url_mock.apply_async(args=[url], queue="io_tasks")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "io_tasks"}), 202
-
-
+ 
+ 
 @app.route("/tasks/io/batch-process", methods=["POST"])
+@require_api_key
 def submit_batch_process():
     data = request.get_json(force=True)
     files = data.get("files", [])
@@ -109,26 +114,29 @@ def submit_batch_process():
         return jsonify({"error": "files must be a non-empty list"}), 400
     task = batch_process_files.apply_async(args=[files], queue="io_tasks")
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "io_tasks"}), 202
-
-
+ 
+ 
 @app.route("/tasks/sample/add", methods=["POST"])
+@require_api_key
 def submit_add():
     data = request.get_json(force=True)
     x = data.get("x", 0)
     y = data.get("y", 0)
     task = add.apply_async(args=[x, y])
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "default"}), 202
-
-
+ 
+ 
 @app.route("/tasks/sample/countdown", methods=["POST"])
+@require_api_key
 def submit_countdown():
     data = request.get_json(force=True)
     seconds = data.get("seconds", 5)
     task = countdown_task.apply_async(args=[seconds])
     return jsonify({"task_id": task.id, "status": "PENDING", "queue": "default"}), 202
-
-
+ 
+ 
 @app.route("/tasks/sample/chain", methods=["POST"])
+@require_api_key
 def submit_chain():
     data = request.get_json(force=True)
     n = data.get("n", 5)
