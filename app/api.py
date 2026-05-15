@@ -1,12 +1,25 @@
-from flask import Flask, jsonify, request
-from celery.result import AsyncResult
+"""
+Flask REST API — task submission gateway with API key authentication.
+ 
+Auth rules:
+  - GET  /health               → public (no key needed)
+  - GET  /tasks/<id>/status    → @require_api_key  (any valid key)
+  - POST /tasks/**             → @require_api_key  (any valid key)
+  - DELETE /tasks/<id>/revoke  → @require_admin    (admin key only)
+  - GET  /workers              → @require_admin    (admin key only)
+  - GET  /queues               → @require_admin    (admin key only)
+"""
 
+from flask import Flask, jsonify, request, g
+from celery.result import AsyncResult
+ 
 from app.celery_app import celery
 from app.tasks.compute_tasks import sum_of_squares, fibonacci, matrix_multiply
 from app.tasks.io_tasks import simulate_file_processing, fetch_url_mock, batch_process_files
 from app.tasks.sample_tasks import add, countdown_task, chain_demo
+from app.auth.api_key_auth import require_api_key, require_admin, reload_keys
 from config.app_config import Config
-
+ 
 app = Flask(__name__)
 app.config.from_object(Config)
 
