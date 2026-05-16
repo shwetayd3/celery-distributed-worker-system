@@ -85,6 +85,15 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     REDIS_URL = "memory://"   # In-memory broker for unit tests
+ 
+    API_KEYS = [
+        {"key": "test-admin-key",    "name": "test-admin",    "role": "admin",    "rate_limit": None, "enabled": True},
+        {"key": "test-readonly-key", "name": "test-readonly", "role": "readonly", "rate_limit": None, "enabled": True},
+        {"key": "test-expired-key",  "name": "test-expired",  "role": "admin",    "rate_limit": None, "enabled": True,
+         "expires_at": "2000-01-01T00:00:00+00:00"},
+        {"key": "test-disabled-key", "name": "test-disabled", "role": "admin",    "rate_limit": None, "enabled": False},
+        {"key": "test-limited-key",  "name": "test-limited",  "role": "admin",    "rate_limit": 2,    "enabled": True},
+    ]
 
 
 config_map = {
