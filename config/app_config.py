@@ -60,6 +60,9 @@ class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
+    # API Key Auth
+    API_KEYS = _load_api_keys()
+
     # ── Result cleanup ───────────────────────────────────────────────────────
     RESULT_TTL_SECONDS = int(os.getenv("RESULT_TTL_SECONDS", 3600))
 
