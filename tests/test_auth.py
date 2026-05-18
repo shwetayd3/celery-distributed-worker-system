@@ -56,3 +56,15 @@ def client():
     app.config["TESTING"] = True
     with app.test_client() as c:
         yield c
+
+def auth_header(key: str) -> dict:
+    return {"X-API-Key": key}
+ 
+def make_mock_task(task_id="t1", status="PENDING"):
+    m = MagicMock()
+    m.id = task_id
+    m.status = status
+    m.successful.return_value = False
+    m.failed.return_value = False
+    return m
+ 
