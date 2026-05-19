@@ -82,4 +82,31 @@ class TestPublicEndpoints:
         """Even an invalid key should not affect the public /health endpoint."""
         res = client.get("/health", headers={"X-API-Key": "garbage"})
         assert res.status_code == 200
+
+
+# ── Missing / invalid key ─────────────────────────────────────────────────────
  
+class TestMissingAndInvalidKey:
+    def test_missing_key_returns_401(self, client):
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2})
+        assert res.status_code == 401
+        data = res.get_json()
+        assert "Missing API key" in data["error"]
+        assert "hint" in data
+ 
+    def test_empty_key_returns_401(self, client):
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers={"X-API-Key": ""})
+        assert res.status_code == 401
+ 
+    def test_wrong_key_returns_403(self, client):
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers=auth_header("completely-wrong-key"))
+        assert res.status_code == 403
+        assert "Invalid API key" in res.get_json()["error"]
+ 
+    def test_almost_correct_key_returns_403(self, client):
+        """One character different from a valid key must be rejected."""
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers=auth_header("test-admin-ke"))  # truncated
+        assert res.status_code == 403
