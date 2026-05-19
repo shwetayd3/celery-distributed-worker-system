@@ -67,4 +67,19 @@ def make_mock_task(task_id="t1", status="PENDING"):
     m.successful.return_value = False
     m.failed.return_value = False
     return m
+
+
+# ── Public endpoints ──────────────────────────────────────────────────────────
+ 
+class TestPublicEndpoints:
+    def test_health_no_key(self, client):
+        """GET /health must be accessible without any API key."""
+        res = client.get("/health")
+        assert res.status_code == 200
+        assert res.get_json()["status"] == "ok"
+ 
+    def test_health_with_invalid_key_still_works(self, client):
+        """Even an invalid key should not affect the public /health endpoint."""
+        res = client.get("/health", headers={"X-API-Key": "garbage"})
+        assert res.status_code == 200
  
