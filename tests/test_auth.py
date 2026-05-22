@@ -125,3 +125,13 @@ class TestRevokedAndExpiredKeys:
                           headers=auth_header("test-expired-key"))
         assert res.status_code == 403
         assert "expired" in res.get_json()["error"].lower()
+
+# ── Role-based access control ─────────────────────────────────────────────────
+ 
+class TestRBAC:
+    @patch("app.api.add")
+    def test_admin_key_can_submit_tasks(self, mock_task, client):
+        mock_task.apply_async.return_value = make_mock_task()
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers=auth_header("test-admin-key"))
+        assert res.status_code == 202
