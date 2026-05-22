@@ -110,3 +110,18 @@ class TestMissingAndInvalidKey:
         res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
                           headers=auth_header("test-admin-ke"))  # truncated
         assert res.status_code == 403
+     
+# ── Disabled and expired keys ─────────────────────────────────────────────────
+ 
+class TestRevokedAndExpiredKeys:
+    def test_disabled_key_returns_403(self, client):
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers=auth_header("test-disabled-key"))
+        assert res.status_code == 403
+        assert "revoked" in res.get_json()["error"].lower()
+ 
+    def test_expired_key_returns_403(self, client):
+        res = client.post("/tasks/sample/add", json={"x": 1, "y": 2},
+                          headers=auth_header("test-expired-key"))
+        assert res.status_code == 403
+        assert "expired" in res.get_json()["error"].lower()
