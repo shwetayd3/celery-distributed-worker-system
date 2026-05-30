@@ -39,3 +39,53 @@ Schema (DLQEntry):
   score         same as failed_at epoch — used as the sorted-set score
 
 """
+
+import json
+import logging
+import time
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+ 
+import redis as redis_lib
+ 
+from config.app_config import Config
+ 
+logger = logging.getLogger(__name__)
+ 
+# Redis key for the sorted set that holds all DLQ entries
+DLQ_KEY = "dlq:failed_tasks"
+# Secondary index: task_id → score, for O(1) lookup by task ID
+DLQ_INDEX_KEY = "dlq:task_id_index"
+ 
+ 
+# ── Data model ────────────────────────────────────────────────────────────────
+ 
+@dataclass
+class DLQEntry:
+    task_id:    str
+    task_name:  str
+    queue:      str
+    args:       list
+    kwargs:     dict
+    retries:    int
+    exception:  str
+    traceback:  str
+    failed_at:  str               # ISO-8601 UTC
+    worker:     str
+    score:      float = field(default_factory=time.time)   # epoch seconds
+ 
+    def to_dict(self) -> dict:
+        return asdict(self)
+ 
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+ 
+    @classmethod
+    def from_dict(cls, d: dict) -> "DLQEntry":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+ 
+    @classmethod
+    def from_json(cls, s: str | bytes) -> "DLQEntry":
+        return cls.from_dict(json.loads(s))
+ 
