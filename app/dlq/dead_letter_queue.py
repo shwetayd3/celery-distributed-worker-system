@@ -138,7 +138,7 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] Failed to persist entry {entry.task_id}: {exc}")
             return False
-
+ 
     # ── Read ───────────────────────────────────────────────────────────────────
  
     @classmethod
@@ -159,3 +159,26 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] list() failed: {exc}")
             return []
+ 
+    @classmethod
+    def get(cls, task_id: str) -> Optional[dict]:
+        """
+        Retrieve a single DLQ entry by its original Celery task ID.
+        Returns None if not found.
+        """
+        try:
+            r = cls._redis()
+            score = r.hget(DLQ_INDEX_KEY, task_id)
+            if score is None:
+                return None
+            score = float(score)
+            # ZRANGEBYSCORE with exact score to find the matching member
+            members = r.zrangebyscore(DLQ_KEY, score, score)
+            for raw in members:
+                entry = json.loads(raw)
+                if entry.get("task_id") == task_id:
+                    return entry
+            return None
+        except Exception as exc:
+            logger.error(f"[DLQ] get({task_id}) failed: {exc}")
+            return None
