@@ -89,3 +89,23 @@ class DLQEntry:
     def from_json(cls, s: str | bytes) -> "DLQEntry":
         return cls.from_dict(json.loads(s))
  
+# ── Store ─────────────────────────────────────────────────────────────────────
+ 
+class DLQStore:
+    """
+    Redis-backed Dead-Letter Queue store.
+ 
+    All methods are class methods — no instance state needed since
+    the Redis connection is stateless and created per-call.
+    """
+ 
+    # ── Connection ─────────────────────────────────────────────────────────────
+ 
+    @classmethod
+    def _redis(cls) -> redis_lib.Redis:
+        return redis_lib.from_url(
+            Config.REDIS_URL,
+            socket_connect_timeout=3,
+            decode_responses=True,
+        )
+ 
