@@ -109,3 +109,32 @@ class DLQStore:
             decode_responses=True,
         )
  
+    # ── Write ──────────────────────────────────────────────────────────────────
+ 
+    @classmethod
+    def push(cls, entry: DLQEntry) -> bool:
+        """
+        Persist a failed task entry to the DLQ.
+ 
+        Uses a pipeline so both the sorted-set write and the index write
+        are atomic — no partial state if Redis goes down between the two.
+ 
+        Returns True on success, False on error (fail-safe: never raises
+        so a DLQ write failure doesn't crash the worker signal handler).
+        """
+        try:
+            r = cls._redis()
+            pipe = r.pipeline(transaction=True)
+            # Sorted set: score=epoch for time-range queries
+            pipe.zadd(DLQ_KEY, {entry.to_json(): entry.score})
+            # Index: task_id → score for O(1) delete/lookup
+            pipe.hset(DLQ_INDEX_KEY, entry.task_id, entry.score)
+            pipe.execute()
+            logger.info(
+                f"[DLQ] Persisted failed task  task_id={entry.task_id} "
+                f"task={entry.task_name}  retries={entry.retries}"
+            )
+            return True
+        except Exception as exc:
+            logger.error(f"[DLQ] Failed to persist entry {entry.task_id}: {exc}")
+            return False
