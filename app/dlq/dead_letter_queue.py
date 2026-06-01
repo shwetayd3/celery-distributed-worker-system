@@ -138,3 +138,24 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] Failed to persist entry {entry.task_id}: {exc}")
             return False
+
+    # ── Read ───────────────────────────────────────────────────────────────────
+ 
+    @classmethod
+    def list(cls, limit: int = 50, offset: int = 0) -> list[dict]:
+        """
+        Return paginated DLQ entries, newest first.
+ 
+        Args:
+            limit:  max entries to return (capped at 200)
+            offset: how many entries to skip (for pagination)
+        """
+        limit = min(limit, 200)
+        try:
+            r = cls._redis()
+            # ZREVRANGE: highest score (most recent) first
+            raw_entries = r.zrevrange(DLQ_KEY, offset, offset + limit - 1)
+            return [json.loads(e) for e in raw_entries]
+        except Exception as exc:
+            logger.error(f"[DLQ] list() failed: {exc}")
+            return []
