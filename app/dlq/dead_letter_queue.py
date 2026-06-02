@@ -182,3 +182,56 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] get({task_id}) failed: {exc}")
             return None
+ 
+    @classmethod
+    def count(cls) -> int:
+        """Return total number of entries in the DLQ."""
+        try:
+            return cls._redis().zcard(DLQ_KEY)
+        except Exception as exc:
+            logger.error(f"[DLQ] count() failed: {exc}")
+            return -1
+ 
+    @classmethod
+    def stats(cls) -> dict:
+        """
+        Return summary statistics over all DLQ entries:
+          - total count
+          - breakdown by task_name
+          - breakdown by queue
+          - oldest and newest failure timestamps
+        """
+        try:
+            r = cls._redis()
+            all_raw = r.zrange(DLQ_KEY, 0, -1, withscores=True)
+            if not all_raw:
+                return {"total": 0, "by_task": {}, "by_queue": {}, "oldest": None, "newest": None}
+ 
+            by_task: dict[str, int] = {}
+            by_queue: dict[str, int] = {}
+            scores = []
+ 
+            for raw, score in all_raw:
+                try:
+                    entry = json.loads(raw)
+                    tn = entry.get("task_name", "unknown")
+                    q  = entry.get("queue",     "unknown")
+                    by_task[tn]  = by_task.get(tn, 0) + 1
+                    by_queue[q]  = by_queue.get(q, 0) + 1
+                    scores.append(score)
+                except Exception:
+                    continue
+ 
+            return {
+                "total":    len(all_raw),
+                "by_task":  by_task,
+                "by_queue": by_queue,
+                "oldest":   datetime.fromtimestamp(min(scores), tz=timezone.utc).isoformat(),
+                "newest":   datetime.fromtimestamp(max(scores), tz=timezone.utc).isoformat(),
+            }
+        except Exception as exc:
+            logger.error(f"[DLQ] stats() failed: {exc}")
+            return {"error": str(exc)}
+    
+    
+ 
