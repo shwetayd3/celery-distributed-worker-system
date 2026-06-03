@@ -232,6 +232,44 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] stats() failed: {exc}")
             return {"error": str(exc)}
+     
+    # ── Delete ─────────────────────────────────────────────────────────────────
+ 
+    @classmethod
+    def delete(cls, task_id: str) -> bool:
+        """
+        Remove a single entry from the DLQ by task_id.
+        Call this after manually resolving the failure.
+        Returns True if deleted, False if not found or on error.
+        """
+        try:
+            r = cls._redis()
+            score = r.hget(DLQ_INDEX_KEY, task_id)
+            if score is None:
+                logger.warning(f"[DLQ] delete({task_id}): not found in index")
+                return False
+ 
+            score = float(score)
+            members = r.zrangebyscore(DLQ_KEY, score, score)
+            deleted = 0
+            pipe = r.pipeline(transaction=True)
+            for raw in members:
+                entry = json.loads(raw)
+                if entry.get("task_id") == task_id:
+                    pipe.zrem(DLQ_KEY, raw)
+                    pipe.hdel(DLQ_INDEX_KEY, task_id)
+                    deleted += 1
+            pipe.execute()
+ 
+            if deleted:
+                logger.info(f"[DLQ] Deleted entry task_id={task_id}")
+                return True
+            return False
+        except Exception as exc:
+            logger.error(f"[DLQ] delete({task_id}) failed: {exc}")
+            return False
+ 
     
+ 
     
  
