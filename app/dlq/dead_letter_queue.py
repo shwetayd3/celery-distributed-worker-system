@@ -269,7 +269,39 @@ class DLQStore:
             logger.error(f"[DLQ] delete({task_id}) failed: {exc}")
             return False
  
-    
+    @classmethod
+    def prune(cls, older_than_days: int = 30) -> int:
+        """
+        Delete all DLQ entries older than `older_than_days` days.
+        Called by the Beat periodic task dlq.prune_old_entries.
+        Returns the number of entries deleted.
+        """
+        try:
+            r = cls._redis()
+            cutoff = time.time() - (older_than_days * 86400)
+ 
+            # Fetch members that will be pruned so we can clean the index too
+            old_members = r.zrangebyscore(DLQ_KEY, "-inf", cutoff)
+            if not old_members:
+                return 0
+ 
+            pipe = r.pipeline(transaction=True)
+            # Remove from sorted set
+            pipe.zremrangebyscore(DLQ_KEY, "-inf", cutoff)
+            # Clean index entries
+            for raw in old_members:
+                try:
+                    entry = json.loads(raw)
+                    pipe.hdel(DLQ_INDEX_KEY, entry.get("task_id", ""))
+                except Exception:
+                    pass
+            pipe.execute()
+ 
+            logger.info(f"[DLQ] Pruned {len(old_members)} entries older than {older_than_days}d")
+            return len(old_members)
+        except Exception as exc:
+            logger.error(f"[DLQ] prune() failed: {exc}")
+            return 0
  
     
  
