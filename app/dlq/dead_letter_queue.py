@@ -46,21 +46,21 @@ import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional
- 
+
 import redis as redis_lib
- 
+
 from config.app_config import Config
- 
+
 logger = logging.getLogger(__name__)
- 
+
 # Redis key for the sorted set that holds all DLQ entries
 DLQ_KEY = "dlq:failed_tasks"
 # Secondary index: task_id → score, for O(1) lookup by task ID
 DLQ_INDEX_KEY = "dlq:task_id_index"
- 
- 
+
+
 # ── Data model ────────────────────────────────────────────────────────────────
- 
+
 @dataclass
 class DLQEntry:
     task_id:    str
@@ -74,33 +74,34 @@ class DLQEntry:
     failed_at:  str               # ISO-8601 UTC
     worker:     str
     score:      float = field(default_factory=time.time)   # epoch seconds
- 
+
     def to_dict(self) -> dict:
         return asdict(self)
- 
+
     def to_json(self) -> str:
         return json.dumps(self.to_dict())
- 
+
     @classmethod
     def from_dict(cls, d: dict) -> "DLQEntry":
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
- 
+
     @classmethod
     def from_json(cls, s: str | bytes) -> "DLQEntry":
         return cls.from_dict(json.loads(s))
- 
+
+
 # ── Store ─────────────────────────────────────────────────────────────────────
- 
+
 class DLQStore:
     """
     Redis-backed Dead-Letter Queue store.
- 
+
     All methods are class methods — no instance state needed since
     the Redis connection is stateless and created per-call.
     """
- 
+
     # ── Connection ─────────────────────────────────────────────────────────────
- 
+
     @classmethod
     def _redis(cls) -> redis_lib.Redis:
         return redis_lib.from_url(
@@ -108,17 +109,17 @@ class DLQStore:
             socket_connect_timeout=3,
             decode_responses=True,
         )
- 
+
     # ── Write ──────────────────────────────────────────────────────────────────
- 
+
     @classmethod
     def push(cls, entry: DLQEntry) -> bool:
         """
         Persist a failed task entry to the DLQ.
- 
+
         Uses a pipeline so both the sorted-set write and the index write
         are atomic — no partial state if Redis goes down between the two.
- 
+
         Returns True on success, False on error (fail-safe: never raises
         so a DLQ write failure doesn't crash the worker signal handler).
         """
@@ -138,14 +139,14 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] Failed to persist entry {entry.task_id}: {exc}")
             return False
- 
+
     # ── Read ───────────────────────────────────────────────────────────────────
- 
+
     @classmethod
     def list(cls, limit: int = 50, offset: int = 0) -> list[dict]:
         """
         Return paginated DLQ entries, newest first.
- 
+
         Args:
             limit:  max entries to return (capped at 200)
             offset: how many entries to skip (for pagination)
@@ -159,7 +160,7 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] list() failed: {exc}")
             return []
- 
+
     @classmethod
     def get(cls, task_id: str) -> Optional[dict]:
         """
@@ -182,7 +183,7 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] get({task_id}) failed: {exc}")
             return None
- 
+
     @classmethod
     def count(cls) -> int:
         """Return total number of entries in the DLQ."""
@@ -191,7 +192,7 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] count() failed: {exc}")
             return -1
- 
+
     @classmethod
     def stats(cls) -> dict:
         """
@@ -206,11 +207,11 @@ class DLQStore:
             all_raw = r.zrange(DLQ_KEY, 0, -1, withscores=True)
             if not all_raw:
                 return {"total": 0, "by_task": {}, "by_queue": {}, "oldest": None, "newest": None}
- 
+
             by_task: dict[str, int] = {}
             by_queue: dict[str, int] = {}
             scores = []
- 
+
             for raw, score in all_raw:
                 try:
                     entry = json.loads(raw)
@@ -221,7 +222,7 @@ class DLQStore:
                     scores.append(score)
                 except Exception:
                     continue
- 
+
             return {
                 "total":    len(all_raw),
                 "by_task":  by_task,
@@ -232,9 +233,9 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] stats() failed: {exc}")
             return {"error": str(exc)}
-     
+
     # ── Delete ─────────────────────────────────────────────────────────────────
- 
+
     @classmethod
     def delete(cls, task_id: str) -> bool:
         """
@@ -248,7 +249,7 @@ class DLQStore:
             if score is None:
                 logger.warning(f"[DLQ] delete({task_id}): not found in index")
                 return False
- 
+
             score = float(score)
             members = r.zrangebyscore(DLQ_KEY, score, score)
             deleted = 0
@@ -260,7 +261,7 @@ class DLQStore:
                     pipe.hdel(DLQ_INDEX_KEY, task_id)
                     deleted += 1
             pipe.execute()
- 
+
             if deleted:
                 logger.info(f"[DLQ] Deleted entry task_id={task_id}")
                 return True
@@ -268,7 +269,7 @@ class DLQStore:
         except Exception as exc:
             logger.error(f"[DLQ] delete({task_id}) failed: {exc}")
             return False
- 
+
     @classmethod
     def prune(cls, older_than_days: int = 30) -> int:
         """
@@ -279,12 +280,12 @@ class DLQStore:
         try:
             r = cls._redis()
             cutoff = time.time() - (older_than_days * 86400)
- 
+
             # Fetch members that will be pruned so we can clean the index too
             old_members = r.zrangebyscore(DLQ_KEY, "-inf", cutoff)
             if not old_members:
                 return 0
- 
+
             pipe = r.pipeline(transaction=True)
             # Remove from sorted set
             pipe.zremrangebyscore(DLQ_KEY, "-inf", cutoff)
@@ -296,12 +297,45 @@ class DLQStore:
                 except Exception:
                     pass
             pipe.execute()
- 
+
             logger.info(f"[DLQ] Pruned {len(old_members)} entries older than {older_than_days}d")
             return len(old_members)
         except Exception as exc:
             logger.error(f"[DLQ] prune() failed: {exc}")
             return 0
- 
-    
- 
+
+    # ── Requeue ────────────────────────────────────────────────────────────────
+
+    @classmethod
+    def requeue(cls, task_id: str, celery_app) -> Optional[str]:
+        """
+        Re-submit a DLQ entry to its original queue for another attempt.
+
+        Steps:
+          1. Look up the entry by task_id
+          2. Send it back to Celery using the stored task_name, args, kwargs, queue
+          3. Delete the DLQ entry on success
+
+        Returns the new Celery task ID on success, None on failure.
+        """
+        entry = cls.get(task_id)
+        if not entry:
+            logger.warning(f"[DLQ] requeue({task_id}): entry not found")
+            return None
+
+        try:
+            new_task = celery_app.send_task(
+                entry["task_name"],
+                args=entry.get("args", []),
+                kwargs=entry.get("kwargs", {}),
+                queue=entry.get("queue", "default"),
+            )
+            cls.delete(task_id)
+            logger.info(
+                f"[DLQ] Requeued task_id={task_id} → new_task_id={new_task.id} "
+                f"queue={entry.get('queue')}"
+            )
+            return new_task.id
+        except Exception as exc:
+            logger.error(f"[DLQ] requeue({task_id}) failed: {exc}")
+            return None
