@@ -99,3 +99,37 @@ def on_task_failure(
             f"exception={exception}"
         )
 
+@task_retry.connect
+def on_task_retry(sender, request, reason, einfo, **extras):
+    """
+    Fired on every retry attempt (before the task is re-queued).
+    We do NOT write to the DLQ here — just log for observability.
+    """
+    retries_done = getattr(request, "retries", 0)
+    max_retries  = getattr(sender, "max_retries", "?")
+    logger.info(
+        f"[retry signal] task={sender.name}  task_id={request.id}  "
+        f"attempt={retries_done}/{max_retries}  reason={reason}"
+    )
+
+
+def _safe_serialize(value):
+    """
+    Best-effort JSON-safe conversion of task args/kwargs.
+    Replaces non-serializable objects with their repr() string.
+    """
+    import json
+
+    def _coerce(obj):
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return repr(obj)
+
+    if isinstance(value, (list, tuple)):
+        return [_coerce(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _coerce(v) for k, v in value.items()}
+    return _coerce(value)
+  
