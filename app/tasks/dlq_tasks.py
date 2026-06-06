@@ -24,3 +24,42 @@ logger = logging.getLogger(__name__)
     ignore_result=False,
 )
   
+def prune_old_dlq_entries(self) -> dict:
+    """
+    Scheduled daily at 02:00 UTC by Celery Beat.
+
+    Deletes DLQ entries older than Config.DLQ_TTL_DAYS (default: 30).
+    Also logs current DLQ stats so the deletion is auditable in logs.
+    """
+ 
+    ttl_days = Config.DLQ_TTL_DAYS
+    logger.info(f"[dlq_prune] Starting — pruning entries older than {ttl_days} days")
+ 
+    try:
+        # Snapshot stats before pruning for the audit log
+        before = DLQStore.stats()
+ 
+        deleted = DLQStore.prune(older_than_days=ttl_days)
+ 
+        # Snapshot stats after pruning
+        after = DLQStore.stats()
+ 
+        result = {
+            "task_id":       self.request.id,
+            "ran_at":        datetime.now(timezone.utc).isoformat(),
+            "ttl_days":      ttl_days,
+            "deleted":       deleted,
+            "total_before":  before.get("total", -1),
+            "total_after":   after.get("total", -1),
+        }
+ 
+        logger.info(
+            f"[dlq_prune] Done — deleted={deleted} "
+            f"remaining={result['total_after']}"
+        )
+        return result
+ 
+    except Exception as exc:
+        logger.error(f"[dlq_prune] Error: {exc}")
+        raise self.retry(exc=exc)
+ 
