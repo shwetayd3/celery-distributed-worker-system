@@ -39,6 +39,11 @@ task_routes = {
     # Sample/demo tasks → default workers
     "sample.*":                         {"queue": "default"},
     "app.tasks.sample_tasks.*":         {"queue": "default"},
+
+    "periodic.*":                 {"queue": "default"},
+    "app.tasks.periodic_tasks.*": {"queue": "default"},
+    "dlq.*":                      {"queue": "default"},
+    "app.tasks.dlq_tasks.*":      {"queue": "default"},
 }
 
 # ── Serialization ────────────────────────────────────────────────────────────
