@@ -92,11 +92,22 @@ beat_schedule = {
         "schedule": crontab(minute=0),       # crontab = "at the top of every hour"
         "options": {"queue": "default"},
     },
+
+    # Task 3: DLQ prune — daily at 02:00 UTC
+    # Deletes DLQ entries older than DLQ_TTL_DAYS (default 30).
+    # Runs at an off-peak hour to minimise Redis contention.
+    "dlq-prune-daily": {
+        "task":    "dlq.prune_old_entries",
+        "schedule": crontab(hour=2, minute=0),
+        "options": {"queue": "default"},
+        "options": {"queue": "default"},
+    },
 }
 
 # Where Beat stores the schedule database (tracks last-run times).
 # Use a mounted volume in Docker so it survives container restarts.
 beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"  # swap to DB scheduler if needed
+
 beat_schedule_filename = "/var/run/celery/celerybeat-schedule"
 beat_max_loop_interval = 5   # seconds between Beat's internal loop ticks
 
@@ -111,3 +122,4 @@ enable_utc = True
 # ── Logging ──────────────────────────────────────────────────────────────────
 worker_hijack_root_logger = False   # Let the app configure its own logging
 worker_log_color = True
+
