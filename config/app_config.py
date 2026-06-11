@@ -66,6 +66,9 @@ class Config:
     # ── Result cleanup ───────────────────────────────────────────────────────
     RESULT_TTL_SECONDS = int(os.getenv("RESULT_TTL_SECONDS", 3600))
 
+    # Dead-Letter Queue
+    DLQ_TTL_DAYS = int(os.getenv("DLQ_TTL_DAYS", 30))   # entries older than this are pruned
+
     # ── Flower ───────────────────────────────────────────────────────────────
     FLOWER_PORT = int(os.getenv("FLOWER_PORT", 5555))
     FLOWER_BASIC_AUTH = os.getenv("FLOWER_BASIC_AUTH", "admin:secret")
@@ -85,6 +88,7 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     REDIS_URL = "memory://"   # In-memory broker for unit tests
+    DLQ_TTL_DAYS = 30
  
     API_KEYS = [
         {"key": "test-admin-key",    "name": "test-admin",    "role": "admin",    "rate_limit": None, "enabled": True},
