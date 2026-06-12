@@ -202,3 +202,48 @@ def list_queues():
  
 if __name__ == "__main__":
     app.run(debug=Config.DEBUG, host="0.0.0.0", port=5000)
+
+ 
+# ── Dead-Letter Queue endpoints (admin only) ─────────────────────────────────
+ 
+from app.dlq.dead_letter_queue import DLQStore
+ 
+ 
+@app.route("/dlq", methods=["GET"])
+@require_admin
+def dlq_list():
+    """
+    List all entries in the Dead-Letter Queue, newest first.
+    Query params:
+      limit  (int, default 50, max 200)
+      offset (int, default 0)
+    """
+    limit  = min(int(request.args.get("limit",  50)),  200)
+    offset = int(request.args.get("offset", 0))
+    entries = DLQStore.list(limit=limit, offset=offset)
+    total   = DLQStore.count()
+    return jsonify({
+        "total":   total,
+        "limit":   limit,
+        "offset":  offset,
+        "entries": entries,
+    })
+ 
+ 
+@app.route("/dlq/stats", methods=["GET"])
+@require_admin
+def dlq_stats():
+    """Return summary statistics: total count, breakdown by task and queue."""
+    return jsonify(DLQStore.stats())
+ 
+ 
+@app.route("/dlq/<task_id>", methods=["GET"])
+@require_admin
+def dlq_get(task_id):
+    """Retrieve a single DLQ entry by its original Celery task ID."""
+    entry = DLQStore.get(task_id)
+    if entry is None:
+        return jsonify({"error": "Not found", "task_id": task_id}), 404
+    return jsonify(entry)
+ 
+ 
