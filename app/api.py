@@ -208,7 +208,6 @@ if __name__ == "__main__":
  
 from app.dlq.dead_letter_queue import DLQStore
  
- 
 @app.route("/dlq", methods=["GET"])
 @require_admin
 def dlq_list():
@@ -246,4 +245,36 @@ def dlq_get(task_id):
         return jsonify({"error": "Not found", "task_id": task_id}), 404
     return jsonify(entry)
  
+@app.route("/dlq/<task_id>", methods=["DELETE"])
+@require_admin
+def dlq_delete(task_id):
+    """
+    Delete a DLQ entry after manually resolving the failure.
+    Returns 404 if the entry does not exist.
+    """
+    deleted = DLQStore.delete(task_id)
+    if not deleted:
+        return jsonify({"error": "Not found", "task_id": task_id}), 404
+    return jsonify({"status": "deleted", "task_id": task_id})
  
+ 
+@app.route("/dlq/<task_id>/requeue", methods=["POST"])
+@require_admin
+def dlq_requeue(task_id):
+    """
+    Re-submit a DLQ entry to its original queue for another attempt.
+    Deletes the DLQ entry on success.
+    Returns the new Celery task ID.
+    """
+    new_task_id = DLQStore.requeue(task_id, celery)
+    if new_task_id is None:
+        return jsonify({
+            "error": "Requeue failed — entry not found or Celery error",
+            "task_id": task_id,
+        }), 400
+    return jsonify({
+        "status":      "requeued",
+        "original_id": task_id,
+        "new_task_id": new_task_id,
+    })
+  
