@@ -79,4 +79,34 @@ def make_entry(**overrides) -> DLQEntry:
 def make_redis_mock():
     return MagicMock()
  
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQEntry data model
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQEntry:
+    def test_to_json_round_trip(self):
+        entry = make_entry()
+        restored = DLQEntry.from_json(entry.to_json())
+        assert restored.task_id   == entry.task_id
+        assert restored.task_name == entry.task_name
+        assert restored.args      == entry.args
+        assert restored.retries   == entry.retries
+ 
+    def test_to_dict_contains_all_fields(self):
+        entry = make_entry()
+        d = entry.to_dict()
+        for field in ("task_id", "task_name", "queue", "args", "kwargs",
+                      "retries", "exception", "traceback", "failed_at", "worker", "score"):
+            assert field in d, f"Missing field: {field}"
+ 
+    def test_score_defaults_to_current_time(self):
+        before = time.time()
+        entry = DLQEntry(
+            task_id="x", task_name="t", queue="q", args=[], kwargs={},
+            retries=0, exception="E", traceback="", failed_at="", worker="w"
+        )
+        after = time.time()
+        assert before <= entry.score <= after
+ 
  
