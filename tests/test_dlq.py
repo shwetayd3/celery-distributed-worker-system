@@ -110,3 +110,49 @@ class TestDLQEntry:
         assert before <= entry.score <= after
  
  
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.push
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStorePush:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_push_writes_to_sorted_set_and_index(self, mock_redis_lib):
+        r = make_redis_mock()
+        pipe = MagicMock()
+        r.pipeline.return_value.__enter__ = MagicMock(return_value=pipe)
+        r.pipeline.return_value = pipe
+        pipe.execute.return_value = [1, 1]
+        mock_redis_lib.from_url.return_value = r
+ 
+        entry = make_entry()
+        result = DLQStore.push(entry)
+ 
+        assert result is True
+        pipe.zadd.assert_called_once()
+        pipe.hset.assert_called_once_with(DLQ_INDEX_KEY, entry.task_id, entry.score)
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_push_returns_false_on_redis_error(self, mock_redis_lib):
+        mock_redis_lib.from_url.side_effect = Exception("Redis down")
+        result = DLQStore.push(make_entry())
+        assert result is False   # must not raise
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_push_stores_json_in_sorted_set(self, mock_redis_lib):
+        r = make_redis_mock()
+        pipe = MagicMock()
+        r.pipeline.return_value = pipe
+        pipe.execute.return_value = [1, 1]
+        mock_redis_lib.from_url.return_value = r
+ 
+        entry = make_entry()
+        DLQStore.push(entry)
+ 
+        zadd_call = pipe.zadd.call_args
+        mapping = zadd_call[0][1]   # second positional arg is the {member: score} dict
+        raw_key = list(mapping.keys())[0]
+        parsed = json.loads(raw_key)
+        assert parsed["task_id"]   == entry.task_id
+        assert parsed["task_name"] == entry.task_name
+     
