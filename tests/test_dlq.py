@@ -156,3 +156,47 @@ class TestDLQStorePush:
         assert parsed["task_id"]   == entry.task_id
         assert parsed["task_name"] == entry.task_name
      
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.list
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStoreList:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_list_returns_parsed_entries(self, mock_redis_lib):
+        entry = make_entry()
+        r = make_redis_mock()
+        r.zrevrange.return_value = [entry.to_json()]
+        mock_redis_lib.from_url.return_value = r
+ 
+        result = DLQStore.list(limit=10, offset=0)
+ 
+        assert len(result) == 1
+        assert result[0]["task_id"] == entry.task_id
+        r.zrevrange.assert_called_once_with(DLQ_KEY, 0, 9)
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_list_respects_offset(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.zrevrange.return_value = []
+        mock_redis_lib.from_url.return_value = r
+ 
+        DLQStore.list(limit=20, offset=40)
+        r.zrevrange.assert_called_once_with(DLQ_KEY, 40, 59)
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_list_caps_limit_at_200(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.zrevrange.return_value = []
+        mock_redis_lib.from_url.return_value = r
+ 
+        DLQStore.list(limit=999, offset=0)
+        r.zrevrange.assert_called_once_with(DLQ_KEY, 0, 199)
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_list_returns_empty_on_redis_error(self, mock_redis_lib):
+        mock_redis_lib.from_url.side_effect = Exception("Connection refused")
+        result = DLQStore.list()
+        assert result == []
+ 
+ 
