@@ -198,5 +198,32 @@ class TestDLQStoreList:
         mock_redis_lib.from_url.side_effect = Exception("Connection refused")
         result = DLQStore.list()
         assert result == []
+
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.get
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStoreGet:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_get_returns_entry_by_task_id(self, mock_redis_lib):
+        entry = make_entry()
+        r = make_redis_mock()
+        r.hget.return_value = str(entry.score)
+        r.zrangebyscore.return_value = [entry.to_json()]
+        mock_redis_lib.from_url.return_value = r
+ 
+        result = DLQStore.get(entry.task_id)
+        assert result is not None
+        assert result["task_id"] == entry.task_id
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_get_returns_none_for_unknown_id(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.hget.return_value = None
+        mock_redis_lib.from_url.return_value = r
+ 
+        result = DLQStore.get("nonexistent-id")
+        assert result is None
  
  
