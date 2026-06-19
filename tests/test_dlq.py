@@ -226,4 +226,34 @@ class TestDLQStoreGet:
         result = DLQStore.get("nonexistent-id")
         assert result is None
  
+  
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.delete
+# ─────────────────────────────────────────────────────────────────────────────
  
+class TestDLQStoreDelete:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_delete_removes_entry_and_index(self, mock_redis_lib):
+        entry = make_entry()
+        r = make_redis_mock()
+        pipe = MagicMock()
+        r.pipeline.return_value = pipe
+        pipe.execute.return_value = [1, 1]
+        r.hget.return_value = str(entry.score)
+        r.zrangebyscore.return_value = [entry.to_json()]
+        mock_redis_lib.from_url.return_value = r
+ 
+        result = DLQStore.delete(entry.task_id)
+ 
+        assert result is True
+        pipe.zrem.assert_called_once()
+        pipe.hdel.assert_called_once_with(DLQ_INDEX_KEY, entry.task_id)
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_delete_returns_false_for_missing_entry(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.hget.return_value = None
+        mock_redis_lib.from_url.return_value = r
+ 
+        result = DLQStore.delete("ghost-task-id")
+        assert result is False
