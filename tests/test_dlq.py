@@ -257,3 +257,34 @@ class TestDLQStoreDelete:
  
         result = DLQStore.delete("ghost-task-id")
         assert result is False
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.prune
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStorePrune:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_prune_deletes_old_entries(self, mock_redis_lib):
+        entry = make_entry()
+        r = make_redis_mock()
+        pipe = MagicMock()
+        r.pipeline.return_value = pipe
+        pipe.execute.return_value = [2, 1]
+        r.zrangebyscore.return_value = [entry.to_json(), entry.to_json()]
+        mock_redis_lib.from_url.return_value = r
+ 
+        deleted = DLQStore.prune(older_than_days=30)
+ 
+        assert deleted == 2
+        pipe.zremrangebyscore.assert_called_once()
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_prune_returns_zero_when_nothing_to_delete(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.zrangebyscore.return_value = []
+        mock_redis_lib.from_url.return_value = r
+ 
+        deleted = DLQStore.prune(older_than_days=30)
+        assert deleted == 0
+ 
