@@ -288,3 +288,35 @@ class TestDLQStorePrune:
         deleted = DLQStore.prune(older_than_days=30)
         assert deleted == 0
  
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.requeue
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStoreRequeue:
+    @patch.object(DLQStore, "delete", return_value=True)
+    @patch.object(DLQStore, "get")
+    def test_requeue_sends_task_and_deletes_entry(self, mock_get, mock_delete):
+        entry = make_entry()
+        mock_get.return_value = entry.to_dict()
+ 
+        mock_celery = MagicMock()
+        mock_celery.send_task.return_value.id = "new-task-uuid-999"
+ 
+        new_id = DLQStore.requeue(entry.task_id, mock_celery)
+ 
+        assert new_id == "new-task-uuid-999"
+        mock_celery.send_task.assert_called_once_with(
+            entry.task_name,
+            args=entry.args,
+            kwargs=entry.kwargs,
+            queue=entry.queue,
+        )
+        mock_delete.assert_called_once_with(entry.task_id)
+ 
+    @patch.object(DLQStore, "get", return_value=None)
+    def test_requeue_returns_none_for_missing_entry(self, mock_get):
+        result = DLQStore.requeue("nonexistent", MagicMock())
+        assert result is None
+ 
+ 
