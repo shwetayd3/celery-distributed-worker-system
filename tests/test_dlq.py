@@ -320,3 +320,39 @@ class TestDLQStoreRequeue:
         assert result is None
  
  
+
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQStore.stats
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQStoreStats:
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_stats_returns_correct_breakdown(self, mock_redis_lib):
+        entries = [
+            make_entry(task_id="a", task_name="compute.fibonacci",    queue="high_priority", score=1000.0),
+            make_entry(task_id="b", task_name="compute.fibonacci",    queue="high_priority", score=2000.0),
+            make_entry(task_id="c", task_name="io.simulate_file_processing", queue="io_tasks", score=3000.0),
+        ]
+        r = make_redis_mock()
+        r.zrange.return_value = [(e.to_json(), e.score) for e in entries]
+        mock_redis_lib.from_url.return_value = r
+ 
+        stats = DLQStore.stats()
+ 
+        assert stats["total"] == 3
+        assert stats["by_task"]["compute.fibonacci"] == 2
+        assert stats["by_task"]["io.simulate_file_processing"] == 1
+        assert stats["by_queue"]["high_priority"] == 2
+        assert stats["by_queue"]["io_tasks"] == 1
+ 
+    @patch("app.dlq.dead_letter_queue.redis_lib")
+    def test_stats_empty_dlq(self, mock_redis_lib):
+        r = make_redis_mock()
+        r.zrange.return_value = []
+        mock_redis_lib.from_url.return_value = r
+ 
+        stats = DLQStore.stats()
+        assert stats["total"] == 0
+ 
+ 
