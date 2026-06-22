@@ -354,5 +354,90 @@ class TestDLQStoreStats:
  
         stats = DLQStore.stats()
         assert stats["total"] == 0
+
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# Signal handler
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestTaskFailureSignal:
+    @patch("app.dlq.signals.DLQStore")
+    def test_signal_writes_correct_fields(self, mock_store):
+        mock_store.push.return_value = True
+        from app.dlq.signals import on_task_failure
+ 
+        sender = MagicMock()
+        sender.name = "compute.sum_of_squares"
+        sender.request.retries = 3
+        sender.request.delivery_info = {"routing_key": "high_priority"}
+        sender.request.hostname = "worker@host"
+ 
+        exc = RuntimeError("disk full")
+        einfo = MagicMock()
+        einfo.traceback = "Traceback...\nRuntimeError: disk full"
+ 
+        on_task_failure(
+            sender=sender,
+            task_id="task-abc",
+            exception=exc,
+            args=[500],
+            kwargs={},
+            traceback=None,
+            einfo=einfo,
+        )
+ 
+        mock_store.push.assert_called_once()
+        entry: DLQEntry = mock_store.push.call_args[0][0]
+        assert entry.task_id   == "task-abc"
+        assert entry.task_name == "compute.sum_of_squares"
+        assert entry.queue     == "high_priority"
+        assert entry.retries   == 3
+        assert entry.args      == [500]
+        assert "RuntimeError" in entry.exception
+        assert "Traceback"    in entry.traceback
+ 
+    @patch("app.dlq.signals.DLQStore")
+    def test_signal_handles_non_serializable_args(self, mock_store):
+        mock_store.push.return_value = True
+        from app.dlq.signals import on_task_failure
+ 
+        sender = MagicMock()
+        sender.name = "io.task"
+        sender.request.retries = 0
+        sender.request.delivery_info = {}
+        sender.request.hostname = "w@h"
+ 
+        class Unserializable:
+            pass
+ 
+        on_task_failure(
+            sender=sender,
+            task_id="task-xyz",
+            exception=ValueError("bad input"),
+            args=[Unserializable()],
+            kwargs={},
+            traceback=None,
+            einfo=None,
+        )
+ 
+        entry: DLQEntry = mock_store.push.call_args[0][0]
+        # repr() fallback — should be a string, not crash
+        assert isinstance(entry.args[0], str)
+ 
+    @patch("app.dlq.signals.DLQStore")
+    def test_retry_signal_does_not_write_to_dlq(self, mock_store):
+        from app.dlq.signals import on_task_retry
+ 
+        sender = MagicMock()
+        sender.name = "compute.fibonacci"
+ 
+        on_task_retry(
+            sender=sender,
+            request=MagicMock(id="t1", retries=1),
+            reason="transient error",
+            einfo=None,
+        )
+ 
+        mock_store.push.assert_not_called()
  
  
