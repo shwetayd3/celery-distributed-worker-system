@@ -441,3 +441,41 @@ class TestTaskFailureSignal:
         mock_store.push.assert_not_called()
  
  
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# DLQ API endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+import os
+os.environ.setdefault("API_KEYS", json.dumps([
+    {"key": "test-admin-key",    "name": "test-admin",    "role": "admin",    "rate_limit": None, "enabled": True},
+    {"key": "test-readonly-key", "name": "test-readonly", "role": "readonly", "rate_limit": None, "enabled": True},
+]))
+ 
+from app.api import app
+import app.auth.api_key_auth as auth_module
+ 
+ 
+@pytest.fixture(autouse=True)
+def reset_registry():
+    auth_module._KEY_REGISTRY = {}
+    auth_module.reload_keys()
+    yield
+    auth_module._KEY_REGISTRY = {}
+ 
+ 
+@pytest.fixture
+def client():
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c
+ 
+ 
+def admin_headers():
+    return {"X-API-Key": "test-admin-key"}
+ 
+ 
+def readonly_headers():
+    return {"X-API-Key": "test-readonly-key"}
+ 
+ 
