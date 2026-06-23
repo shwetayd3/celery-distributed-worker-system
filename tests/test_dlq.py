@@ -479,3 +479,63 @@ def readonly_headers():
     return {"X-API-Key": "test-readonly-key"}
  
  
+class TestDLQAPIEndpoints:
+ 
+    @patch("app.api.DLQStore")
+    def test_list_returns_entries(self, mock_store, client):
+        entry = make_entry()
+        mock_store.list.return_value  = [entry.to_dict()]
+        mock_store.count.return_value = 1
+ 
+        res = client.get("/dlq", headers=admin_headers())
+ 
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["total"]          == 1
+        assert len(data["entries"])   == 1
+        assert data["entries"][0]["task_id"] == entry.task_id
+ 
+    @patch("app.api.DLQStore")
+    def test_list_respects_limit_and_offset(self, mock_store, client):
+        mock_store.list.return_value  = []
+        mock_store.count.return_value = 0
+ 
+        client.get("/dlq?limit=10&offset=20", headers=admin_headers())
+        mock_store.list.assert_called_once_with(limit=10, offset=20)
+ 
+    def test_list_requires_admin(self, client):
+        res = client.get("/dlq", headers=readonly_headers())
+        assert res.status_code == 403
+ 
+    def test_list_requires_auth(self, client):
+        res = client.get("/dlq")
+        assert res.status_code == 401
+ 
+    @patch("app.api.DLQStore")
+    def test_stats_returns_summary(self, mock_store, client):
+        mock_store.stats.return_value = {"total": 5, "by_task": {}, "by_queue": {}}
+        res = client.get("/dlq/stats", headers=admin_headers())
+        assert res.status_code == 200
+        assert res.get_json()["total"] == 5
+ 
+    @patch("app.api.DLQStore")
+    def test_get_returns_entry(self, mock_store, client):
+        entry = make_entry()
+        mock_store.get.return_value = entry.to_dict()
+ 
+        res = client.get(f"/dlq/{entry.task_id}", headers=admin_headers())
+        assert res.status_code == 200
+        assert res.get_json()["task_id"] == entry.task_id
+ 
+    @patch("app.api.DLQStore")
+    def test_get_returns_404_for_unknown(self, mock_store, client):
+        mock_store.get.return_value = None
+        res = client.get("/dlq/nonexistent-id", headers=admin_headers())
+        assert res.status_code == 404
+ 
+    @patch("app.api.DLQStore")
+    def test_delete_removes_entry(self, mock_store, client):
+        mock_store.delete.return_value = True
+        res = client.delete("/dlq/task-uuid-001", headers=admin_headers())
+        assert res.status_code == 200
+        assert res.get_json()["status"] == "deleted"
