@@ -539,3 +539,31 @@ class TestDLQAPIEndpoints:
         res = client.delete("/dlq/task-uuid-001", headers=admin_headers())
         assert res.status_code == 200
         assert res.get_json()["status"] == "deleted"
+ 
+    @patch("app.api.DLQStore")
+    def test_delete_returns_404_for_unknown(self, mock_store, client):
+        mock_store.delete.return_value = False
+        res = client.delete("/dlq/ghost-id", headers=admin_headers())
+        assert res.status_code == 404
+ 
+    @patch("app.api.DLQStore")
+    def test_requeue_returns_new_task_id(self, mock_store, client):
+        mock_store.requeue.return_value = "new-task-uuid-999"
+        res = client.post("/dlq/task-uuid-001/requeue", headers=admin_headers())
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["new_task_id"]  == "new-task-uuid-999"
+        assert data["original_id"]  == "task-uuid-001"
+        assert data["status"]       == "requeued"
+ 
+    @patch("app.api.DLQStore")
+    def test_requeue_returns_400_on_failure(self, mock_store, client):
+        mock_store.requeue.return_value = None
+        res = client.post("/dlq/ghost-id/requeue", headers=admin_headers())
+        assert res.status_code == 400
+ 
+    def test_requeue_requires_admin(self, client):
+        res = client.post("/dlq/task-uuid-001/requeue", headers=readonly_headers())
+        assert res.status_code == 403
+ 
+ 
