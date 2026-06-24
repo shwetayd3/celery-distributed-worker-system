@@ -286,12 +286,15 @@ Copy `.env.example` to `.env` and update values before running.
 
 ## Roadmap
 
-- [ ] Add Prometheus metrics exporter for Celery
+- [x] Named queue routing (default / high_priority / io_tasks)
+- [x] Retry logic with exponential backoff
+- [x] Flower monitoring dashboard
+- [x] API key authentication with RBAC and rate limiting per task type
+- [x] Celery Beat periodic scheduler for periodic/cron tasks
+- [x] Dead-Letter Queue with admin REST API for failed tasks
+- [ ] Prometheus metrics exporter for Celery
 - [ ] Grafana dashboard for long-term task analytics
-- [ ] Beat scheduler for periodic/cron tasks
-- [ ] Slack/email alerts on task failure
-- [ ] Rate limiting per task type
-- [ ] Dead-letter queue for failed tasks
+- [ ] GitHub Actions CI/CD pipeline
 
 ---
 
