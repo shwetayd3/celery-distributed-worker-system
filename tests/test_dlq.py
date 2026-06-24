@@ -567,3 +567,30 @@ class TestDLQAPIEndpoints:
         assert res.status_code == 403
  
  
+# ─────────────────────────────────────────────────────────────────────────────
+# Beat schedule config
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class TestDLQBeatConfig:
+    def test_prune_entry_in_beat_schedule(self):
+        from config.celery_config import beat_schedule
+        task_names = [e["task"] for e in beat_schedule.values()]
+        assert "dlq.prune_old_entries" in task_names
+ 
+    def test_prune_uses_crontab_at_0200(self):
+        from celery.schedules import crontab
+        from config.celery_config import beat_schedule
+        entry = beat_schedule["dlq-prune-daily"]
+        assert isinstance(entry["schedule"], crontab)
+        assert entry["schedule"].hour   == {2}
+        assert entry["schedule"].minute == {0}
+ 
+    def test_prune_routed_to_default_queue(self):
+        from config.celery_config import beat_schedule
+        entry = beat_schedule["dlq-prune-daily"]
+        assert entry["options"]["queue"] == "default"
+ 
+    def test_dlq_tasks_in_celery_app_include(self):
+        from app.celery_app import celery
+        assert "app.tasks.dlq_tasks" in celery.conf.include
+ 
