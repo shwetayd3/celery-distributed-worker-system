@@ -21,7 +21,7 @@ A production-ready distributed task processing system built with **Celery**, **R
 
 ---
 
-## Architecture
+## Architecture Version 1
 
 ```
 [Flask API] --> [Redis Broker] --> [Celery Workers (x N)]
@@ -38,39 +38,110 @@ A production-ready distributed task processing system built with **Celery**, **R
 
 ---
 
+## Architecture Version 2
+
+```
+                         ┌─────────────────────────────────────────┐
+                        │           Flask REST API                 │
+                        │  (API key auth + rate limiting)          │
+                        └────────────────┬────────────────────────┘
+                                         │ submit tasks
+                                         ▼
+                               ┌──────────────────┐
+          ┌────────────────────│   Redis Broker   │────────────────────┐
+          │   default queue    └──────────────────┘  high_priority q   │
+          ▼                            │                                ▼
+  ┌──────────────────┐                 │ io_tasks q          ┌──────────────────┐
+  │  Worker: default │                 ▼                     │ Worker: priority │
+  │  (concurrency=4) │      ┌──────────────────┐            │  (concurrency=2) │
+  └──────────────────┘      │  Worker: io      │            └──────────────────┘
+                             │  (concurrency=8) │
+                             └──────────────────┘
+                                         │
+                                         ▼
+                               ┌──────────────────┐
+                               │  Redis Result    │◄─── Flower Dashboard
+                               │  Backend         │     (http://localhost:5555)
+                               └────────┬─────────┘
+                                        │ on permanent failure
+                                        ▼
+                               ┌──────────────────┐
+                               │  Dead-Letter     │◄─── Admin API (/dlq/*)
+                               │  Queue (Redis    │     list / get / delete
+                               │  Sorted Set)     │     requeue / stats
+                               └──────────────────┘
+                                        ▲
+                               ┌──────────────────┐
+                               │  Celery Beat     │  health check (60s)
+                               │  Scheduler       │  result cleanup (hourly)
+                               │  (single inst.)  │  DLQ prune (daily 02:00)
+                               └──────────────────┘
+
+```
+
+- **Flask API** — accepts task submissions via HTTP; all endpoints protected by X-API-Key auth except /health
+- **Redis** — dual role: message broker (queues) and result backend; also stores the DLQ sorted set
+- **Celery Workers** — 3 dedicated worker processes, each consuming one queue
+- **Celery Beat** — single-instance scheduler that enqueues periodic tasks on a cron/interval cadence
+- **Flower** —  web dashboard for live worker status, task history, queue depths, and failure tracebacks
+- **Dead-Letter Queue** — Redis Sorted Set (dlq:failed_tasks) capturing every permanently-failed task with full traceback, args, retry count, and worker hostname; secondary Hash index for O(1) lookup by task ID
+
+
 ## Project Structure
 
 ```
 celery-distributed-worker-system/
 ├── app/
 │   ├── __init__.py
-│   ├── api.py                  # Flask REST API
+│   ├── api.py                  # Flask REST API — 20 endpoints
 │   ├── celery_app.py           # Celery app config and initialization
 │   ├── tasks/
 │   │   ├── __init__.py
-│   │   ├── compute_tasks.py    # CPU-heavy computation tasks
-│   │   ├── io_tasks.py         # I/O-bound tasks (file, network)
-│   │   └── sample_tasks.py     # Demo tasks for testing
+│   │   ├── compute_tasks.py    # CPU-heavy computation tasks → high_priority 
+│   │   ├── io_tasks.py         # I/O-bound tasks (file, network) → io_tasks queue
+│   │   └── sample_tasks.py     # Demo tasks for testing (chains, groups, countdown)
+│   │   ├── periodic_tasks.py   # Beat tasks: health check + result cleanup
+│   │   └── dlq_tasks.py        # Beat task: DLQ prune (daily)
+│   │
+│   ├── dlq/
+│   │   ├── __init__.py
+│   │   ├── dead_letter_queue.py    # DLQStore — Redis sorted set + hash index
+│   │   └── signals.py              # task_failure signal → DLQ capture
+│   │
 │   └── utils/
 │       ├── __init__.py
-│       └── helpers.py
+│       └── helpers.py          # format_bytes, retry_with_backoff, chunk_list
+|
 ├── config/
-│   ├── celery_config.py        # Queue routing, retry policy, rate limits
-│   └── app_config.py           # Flask and Redis config
+│   ├── __init__.py
+│   ├── celery_config.py        # Queue routing, retry policy, rate-time limits,Beat schedule
+│   └── app_config.py           # Flask Redis, API keys, DLQ TTL config
+│
 ├── monitoring/
-│   └── flower_config.py        # Flower authentication and settings
+│   └── flower_config.py        # Flower authentication and settings, port, persistence settings
+|
 ├── scripts/
-│   ├── start_worker.sh         # Start a Celery worker
+│   ├── start_worker.sh         # Start a Celery worker(queue + concurrency args)
+│   ├── start_beat.sh           # Start Celery Beat (single instance only)
 │   ├── start_flower.sh         # Start Flower dashboard
-│   └── submit_sample_tasks.py  # Test script to enqueue sample tasks
+│   └── submit_sample_tasks.py  # Test script to enqueue sample tasks.End-to-end smoke test across all queues
+│   └── generate_api_key.py     # CLI to generate + hash API keys
+│
 ├── tests/
-│   ├── test_tasks.py
-│   └── test_api.py
+│   ├── __init__.py
+│   ├── test_tasks.py        # Unit tests for all task modules
+│   └── test_api.py          # Flask API endpoint tests (mocked Celery)
+│   ├── test_auth.py         # Auth middleware — 24 tests
+│   ├── test_periodic.py     # Beat tasks + schedule config — 19 tests
+│   └── test_dlq.py          # DLQ store, signals, API, Beat — 43 tests
+│
 ├── docker/
-│   ├── Dockerfile.worker
-│   └── Dockerfile.api
-├── docker-compose.yml
+│   ├── Dockerfile.worker    # Image for workers, Beat, and Flower
+│   └── Dockerfile.api       # Image for Flask API (Gunicorn)
+├── docker-compose.yml       # 6 services: Redis, API, 3 workers, Beat, Flower
 ├── requirements.txt
+├── .env.example
+├── .gitignore
 └── README.md
 ```
 
@@ -83,8 +154,12 @@ celery-distributed-worker-system/
 | Task Queue     | Celery 5.x              |
 | Broker         | Redis 7.x               |
 | Result Backend | Redis 7.x               |
-| API            | Flask + Gunicorn         |
-| Monitoring     | Flower                  |
+|Dead-Letter Queue| Redis Sorted Set + Hash  |
+| API            | Flask 3.x + Gunicorn         |
+|Authentication |API key (SHA-256 hashed) |
+|Rate Limiting | Redis sliding-window counter|
+| Monitoring     | Flower 2.x                |
+| Scheduler | Celery Beat| 
 | Containerization | Docker + Docker Compose |
 | Language       | Python 3.10+            |
 
