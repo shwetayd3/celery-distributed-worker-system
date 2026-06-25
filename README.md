@@ -1,18 +1,23 @@
 # celery-distributed-worker-system
-A production-ready distributed task processing system built with **Celery**, **Redis**, and **Flower** featuring async workers, task routing, retry logic, priority queues, and a real-time monitoring dashboard.
+A production-ready distributed task processing system built with **Celery**, **Redis**, and **Flower** featuring async workers, task routing, retry logic,API key authentication, a Beat scheduler, a Dead-Letter Queue, priority queues, and a real-time monitoring dashboard.
 
 ---
 
 ## Features
 
-- Distributed master-slave worker architecture using Celery
+- Distributed master-slave worker architecture using Celery with 3 named queues
 - Redis as the message broker and result backend
 - Task routing with named queues (`default`, `high_priority`, `io_tasks`)
-- Automatic retries with exponential backoff
-- Flower dashboard for real-time monitoring
-- REST API (Flask) to submit and track tasks
-- Dockerized setup for local and production use
+- Automatic retries with exponential backoff and configurable limits
+- API key authentication — role-based (admin / readonly) with per-key rate limiting
+- Celery Beat scheduler — periodic tasks (health check every 60s, result cleanup hourly)
+- Dead-Letter Queue (DLQ) — permanently-failed tasks persisted in Redis with admin API
+- Flower dashboard for real-time worker and queue monitoring
+ monitoring
+- REST API (Flask + Gunicorn) to submit, track, and manage tasks
+- Dockerized setup for local and production use - one docker-compose up starts all 6 services
 - Sample tasks: heavy computation, file processing, simulated I/O
+- Test suites covering tasks, API, auth, Beat config, and DLQ (no Redis required for unit tests)
 
 ---
 
