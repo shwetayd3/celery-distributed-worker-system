@@ -190,11 +190,18 @@ pip install -r requirements.txt
 docker-compose up --build
 ```
 
-This starts:
-- Redis on `localhost:6379`
-- Flask API on `localhost:5000`
-- 2 Celery workers (default and high-priority queues)
-- Flower dashboard on `localhost:5555`
+This starts all 6 services:
+ 
+| Service            | URL / Port          | Description                        |
+|--------------------|---------------------|------------------------------------|
+| Redis              | `localhost:6379`    | Broker + result backend + DLQ store|
+| Flask API          | `localhost:5000`    | REST API with API key auth         |
+| Worker (default)   | —                   | Handles `default` queue            |
+| Worker (priority)  | —                   | Handles `high_priority` queue      |
+| Worker (io)        | —                   | Handles `io_tasks` queue           |
+| Beat scheduler     | —                   | Periodic tasks (single instance)   |
+| Flower             | `localhost:5555`    | Monitoring dashboard               |
+ 
 
 ### Run Manually (without Docker)
 
@@ -203,19 +210,38 @@ This starts:
 redis-server
 
 # Terminal 2 — Start Celery worker (default queue)
-bash scripts/start_worker.sh default
+bash scripts/start_worker.sh default 4
 
 # Terminal 3 — Start Celery worker (high-priority queue)
-bash scripts/start_worker.sh high_priority
+bash scripts/start_worker.sh high_priority 2
 
-# Terminal 4 — Start Flower
+# Terminal 4 — Worker: io_tasks queue
+bash scripts/start_worker.sh io_tasks 8
+ 
+# Terminal 5 — Beat scheduler (ONE instance only)
+bash scripts/start_beat.sh
+
+# Terminal 6 — Start Flower dashboard
 bash scripts/start_flower.sh
-
-# Terminal 5 — Start Flask API
+ 
+# Terminal 7 — Start Flask API
 flask --app app/api.py run
 ```
 
 ---
+ 
+## API Key Authentication
+ 
+All endpoints (except `GET /health`) require an `X-API-Key` header.
+ 
+### Roles
+ 
+| Role       | Access                                             |
+|------------|----------------------------------------------------|
+| `admin`    | Full access — submit, revoke, inspect, DLQ, reload |
+| `readonly` | Task submission and status only                    |
+ 
+
 
 ## Usage
 
