@@ -241,7 +241,21 @@ All endpoints (except `GET /health`) require an `X-API-Key` header.
 | `admin`    | Full access — submit, revoke, inspect, DLQ, reload |
 | `readonly` | Task submission and status only                    |
  
-
+### Generate a key
+ 
+```bash
+python scripts/generate_api_key.py --name "ci-pipeline" --role admin --rate-limit 120
+```
+ 
+Prints the raw key and the JSON entry to add to `API_KEYS`.
+ 
+### Configure keys
+ 
+```bash
+export API_KEYS='[
+  {"key": "your-secret-key", "name": "local-dev", "role": "admin", "rate_limit": null, "enabled": true}
+]'
+```
 
 ## Usage
 
