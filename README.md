@@ -280,7 +280,7 @@ curl http://localhost:5000/tasks/d3f1a2b4-.../status
 {"task_id": "d3f1a2b4-...", "status": "SUCCESS", "result": 4999950000}
 ```
 
-### Run sample tasks
+### Run sample tasks (smoke test)
 
 ```bash
 python scripts/submit_sample_tasks.py
@@ -288,6 +288,33 @@ python scripts/submit_sample_tasks.py
 
 ---
 
+## Dead-Letter Queue
+ 
+Tasks that exhaust all retries are automatically captured by the `task_failure` Celery signal and written to a Redis Sorted Set (`dlq:failed_tasks`). Each entry stores the task name, queue, original args/kwargs, retry count, full traceback, worker hostname, and failure timestamp.
+
+### DLQ API (admin key required)
+ 
+```bash
+# List all failed tasks (newest first)
+curl http://localhost:5000/dlq?limit=20 -H "X-API-Key: admin-key"
+ 
+# Summary stats by task and queue
+curl http://localhost:5000/dlq/stats -H "X-API-Key: admin-key"
+ 
+# Get a single entry
+curl http://localhost:5000/dlq/<task_id> -H "X-API-Key: admin-key"
+ 
+# Re-submit to original queue (deletes DLQ entry on success)
+curl -X POST http://localhost:5000/dlq/<task_id>/requeue -H "X-API-Key: admin-key"
+ 
+# Delete after manual fix
+curl -X DELETE http://localhost:5000/dlq/<task_id> -H "X-API-Key: admin-key"
+```
+ 
+DLQ entries older than `DLQ_TTL_DAYS` (default: 30) are pruned daily at 02:00 UTC by a Beat task.
+ 
+---
+ 
 ## Celery Configuration Highlights
 
 **`config/celery_config.py`**
